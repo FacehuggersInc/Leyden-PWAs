@@ -106,6 +106,9 @@ class InsertionsActivity : Screen() {
             power.builtinPip = it
             save()
         }
+        built.link(Glyphs.SHIELD, "fingerprint protection", site.fp.summary(), "runs on every site in ${site.label}, before the page’s own scripts, to hide or blur device details. Your phone model is hidden even with insertions off.") {
+            startActivity(Intent(this, FingerprintActivity::class.java).putExtra(AppSettingsActivity.SITE, site.id))
+        }
         built.value(Glyphs.PICKER, "select", "on demand", "for hiding and targeting, only while you use it")
         content.put(built.view)
 

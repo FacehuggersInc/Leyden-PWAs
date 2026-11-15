@@ -328,6 +328,9 @@ class AppSettingsActivity : Screen() {
         privacy.link(Glyphs.EYE, "what ${site.label} remembers", "${site.remember.size} of ${Kinds.ALL.size}", "see and switch off everything this app keeps") {
             startActivity(Intent(this, MemoryActivity::class.java).putExtra(SITE, site.id))
         }
+        privacy.link(Glyphs.SHIELD, "fingerprinting", site.fp.summary(), "hide or blur what sites use to tell your device apart") {
+            startActivity(Intent(this, FingerprintActivity::class.java).putExtra(SITE, site.id))
+        }
         privacy.switch(Glyphs.BOX, "own storage", if (Storage.separate) "separate cookies and logins; switching starts it signed out" else "needs Android System WebView 110 or newer", site.ownStorage && Storage.separate, Storage.separate) {
             site.ownStorage = it
             if (!it) {

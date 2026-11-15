@@ -39,6 +39,7 @@ class Defaults {
     var accent = "orange"
     var groups = mutableListOf<Group>()
     var homeTab = "all"
+    var fingerprint = "standard"
     var selectAt = "bottom"
 
     fun toJson(): JSONObject = JSONObject()
@@ -75,6 +76,7 @@ class Defaults {
         .put("accent", accent)
         .put("groups", JSONArray(groups.map { it.toJson() }))
         .put("homeTab", homeTab)
+        .put("fingerprint", fingerprint)
         .put("selectAt", selectAt)
 
     companion object {
@@ -147,6 +149,7 @@ class Defaults {
             made.accent = json.optString("accent", "orange").ifEmpty { "orange" }
             json.optJSONArray("groups")?.let { array -> made.groups = (0 until array.length()).mapNotNull { array.optJSONObject(it)?.let { item -> Group.fromJson(item) } }.toMutableList() }
             made.homeTab = json.optString("homeTab", "all").ifEmpty { "all" }
+            made.fingerprint = pick(json, "fingerprint", listOf("off", "standard", "strict"), "standard")
             made.selectAt = pick(json, "selectAt", listOf("top", "bottom"), "bottom")
             made.browser = json.optString("browser")
             made.linkNote = json.optBoolean("linkNote", true)

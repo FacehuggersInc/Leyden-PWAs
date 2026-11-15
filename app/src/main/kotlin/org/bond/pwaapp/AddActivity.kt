@@ -146,6 +146,9 @@ class AddActivity : Screen() {
                 }
             } else {
                 card.custom(itemView(Item("Couldn’t read the site", error, Glyphs.WARN, T.danger)))
+                card.custom(note("Some sites refuse anything that isn’t a full browser, or are only reachable in certain ways. You can add it anyway: the name, icon and color can be set by hand in the next step."))
+                card.action(Glyphs.ARROW_RIGHT, "Add it anyway", "with your usual protections", "continue") { anyway(false) }
+                card.action(Glyphs.SHIELD, "Add it with the lowest protections", "no ad blocking or fingerprinting protection; when it opens, you turn them on one at a time", "continue") { anyway(true) }
             }
             content.put(card.view)
         }
@@ -230,6 +233,20 @@ class AddActivity : Screen() {
                 redraw()
             }
         }
+        val prints = result?.fingerprinting?.toMap().orEmpty()
+        if (result != null && result.ran && prints.isNotEmpty()) {
+            val strong = prints.keys.any { it in setOf("canvas", "webgl", "audio") }
+            val on = draft.fp.level == "strict"
+            val item = Item(
+                "It read details that can identify your device",
+                "On the first page: ${Fingerprint.describe(prints)}. Not every read is tracking, but these are the usual ways sites tell devices apart.",
+                Glyphs.EYE, if (strong) T.accent else T.info, if (strong) (if (on) "strict protection on" else "use strict protection") else null, on,
+            ) {
+                draft.fp.apply(if (on) "standard" else "strict")
+                redraw()
+            }
+            if (strong) decide += item else know += item
+        }
         if (!https && !self) decide += Item("It isn’t encrypted", "It uses plain http, so anyone on the same network can read what you send and see.", Glyphs.UNLOCK, T.danger)
 
         if (!https && self) know += Item("Plain http on your own network", "Fine on a private network like Tailscale or your LAN. Others on that network could read it.", Glyphs.UNLOCK, T.info)
@@ -250,6 +267,7 @@ class AddActivity : Screen() {
         if (site.fromManifest) fine += "app manifest"
         if (result != null && result.ran && result.listsReady && result.trackers.isEmpty()) fine += "no trackers"
         if (result != null && result.ran && result.thirdCookies == 0) fine += "no cookies from other sites"
+        if (result != null && result.ran && Storage.earlyScripts && result.fingerprinting.isEmpty()) fine += "no fingerprinting seen"
         if (result != null && result.ran && defaults.checkCertificate && result.mixed == 0 && https) fine += "all encrypted"
 
         val summary = column(4)
@@ -395,6 +413,47 @@ class AddActivity : Screen() {
                 }
             }
         }.start()
+    }
+
+    private fun anyway(lowest: Boolean) {
+        val url = normalizeAddress(address.trim())
+        val host = hostOf(url)
+        if (host.isEmpty()) {
+            toast("That isn’t an address Leyden can open")
+            return
+        }
+        val made = Found(
+            url = url,
+            name = host.removePrefix("www."),
+            scope = url.substringBefore("://") + "://" + host + "/",
+            color = null,
+            background = null,
+            orientation = "any",
+            icon = null,
+            iconSize = 0,
+            maskable = false,
+            fromManifest = false,
+            shortcuts = emptyList(),
+            mobileLayout = true,
+            redirectedTo = emptyList(),
+            googleSignIn = false,
+        )
+        found = made
+        problem = null
+        certificate = null
+        draft = Site.fresh(defaults)
+        fill(made)
+        kept = Kept.forAddress(this, url)
+        useKept = kept != null
+        if (useKept) applyKept()
+        check = CheckResult().apply { reason = "The site couldn’t be read, so it wasn’t checked." }
+        events["skip"] = LookupEvent("skip", "Continuing without the check", if (lowest) "lowest protections; you’ll turn them on when it opens" else "with your usual protections", "note")
+        if (lowest) {
+            StepUp.lowest(draft)
+            blockingNote = "off for now; you turn it on step by step when it opens"
+        }
+        step = 2
+        redrawTop()
     }
 
     private fun fill(site: Found) {

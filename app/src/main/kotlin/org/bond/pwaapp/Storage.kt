@@ -32,7 +32,12 @@ object Storage {
         }
     }
 
-    fun profileName(site: Site): String? = if (site.ownStorage && separate) "site-${site.id}" else null
+    fun profileName(site: Site): String? = when {
+        site.session.isNotEmpty() -> if (separate) Sessions.PREFIX + site.sessionId else null
+        site.storageName.isNotEmpty() && site.ownStorage && separate -> site.storageName
+        site.ownStorage && separate -> "site-${site.id}"
+        else -> null
+    }
 
     fun attach(webView: WebView, name: String?) {
         if (name == null) return

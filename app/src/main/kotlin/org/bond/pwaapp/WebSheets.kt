@@ -126,7 +126,7 @@ object Nav {
         lateinit var paint: () -> Unit
         fun outsideEntries(): List<QuickEntry> {
             val level = Blocker.level(site, defaults, activity.pageUrl)
-            return listOf(
+            return listOf<QuickEntry>(
                 QuickEntry(Glyphs.CHEVRON_LEFT, "back a page", null, "previous history") {
                     sheet.dismiss()
                     if (activity.webView.canGoBack()) activity.webView.goBack()
@@ -163,7 +163,7 @@ object Nav {
                     sheet.dismiss()
                     activity.returnToApp()
                 },
-            )
+            ).filter { site.session != "private" || !it.name.startsWith("block ads") }
         }
         val search = activity.field("", "Search, or find on this page", false, android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
         search.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
@@ -210,7 +210,7 @@ object Nav {
             rest.put(keys)
             val level = Blocker.level(site, defaults, activity.pageUrl)
             val list = activity.card()
-            list.switch(Glyphs.SHIELD, "block ads and trackers here", "${plural(activity.blockedHere.get(), "thing")} blocked on this page", level != "off") { on ->
+            if (site.session != "private") list.switch(Glyphs.SHIELD, "block ads and trackers here", "${plural(activity.blockedHere.get(), "thing")} blocked on this page", level != "off") { on ->
                 if (on) {
                     site.unblocked.removeAll { Filters.within(host, it) }
                     if (site.otherBlockingNow(defaults) == "off") site.otherBlocking = "always"
@@ -224,7 +224,8 @@ object Nav {
                 if (on) site.keepInside += base else site.keepInside.removeAll { Filters.within(host, it) }
                 activity.saveSite()
             }
-            val secure = activity.pageUrl.startsWith("https:") || isSelfHosted(host)
+            Fingerprint.describe(activity.fpCounts).takeIf { it.isNotEmpty() }?.let { list.value(Glyphs.EYE, "fingerprinting here", site.fp.summary(), "this page read: $it") }
+        val secure = activity.pageUrl.startsWith("https:") || isSelfHosted(host)
             val listed = Blocker.listed(host)
             val problems = listOfNotNull(if (!secure) "not encrypted" else null, if (listed) "on your blocking lists" else null)
             list.value(if (problems.isEmpty()) Glyphs.CHECK else Glyphs.WARN, "this site", if (problems.isEmpty()) "fine" else "risky",

@@ -22,6 +22,7 @@ class MainActivity : Screen() {
         Proxy.apply(this)
         Share.publish(this)
         if (savedInstanceState == null) Brand.splash(this)
+        Sessions.cleanUp(this)
         if (!Defaults.get(this).firstRunDone) startActivity(Intent(this, FirstRunActivity::class.java))
     }
 
@@ -79,7 +80,9 @@ class MainActivity : Screen() {
         listArea = area
         content.put(area)
         paintList(sites, live)
-        bottom.put(primaryButton("Add a site", Glyphs.PLUS) { startActivity(Intent(this, AddActivity::class.java)) }, MATCH_PARENT, dp(52))
+        bottom.put(secondaryButton("Peek", Glyphs.EYE) { Sessions.start(this, "peek", null) }, WRAP_CONTENT, dp(52))
+        bottom.put(secondaryButton("Private", Glyphs.HIDDEN) { Sessions.start(this, "private", null) }, WRAP_CONTENT, dp(52)).margins(dp(8), 0, dp(8), 0)
+        bottom.put(primaryButton("Add a site", Glyphs.PLUS) { startActivity(Intent(this, AddActivity::class.java)) }, 0, dp(52), 1f)
         showBottom()
     }
 
@@ -253,6 +256,13 @@ class MainActivity : Screen() {
             val count = badge(memory.unread.toString(), T.accent)
             frame.addView(count, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.END))
         }
+        val playing = NowPlaying.get(site)
+        if (running && playing != null && playing.playing) {
+            val note = FrameLayout(this)
+            note.background = rounded(T.accent, dpf(10f), dp(2), T.bg)
+            note.addView(glyph(Glyphs.MUSIC, T.onAccent, 11, 2f), FrameLayout.LayoutParams(dp(11), dp(11), Gravity.CENTER))
+            frame.addView(note, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.BOTTOM or Gravity.START))
+        }
         if (site.locks) {
             val lock = FrameLayout(this)
             lock.background = rounded(T.surface, dpf(10f), dp(1), T.border)
@@ -302,8 +312,10 @@ class MainActivity : Screen() {
         row.put(appIcon(site, 26, 8f), dp(26), dp(26))
         val words = column(1)
         words.put(text(site.label, 13f, T.ink, Fonts.sansMedium).oneLine())
+        val playing = NowPlaying.get(site)
         val detail = when {
             site.locks -> "locked"
+            playing != null && playing.title.isNotEmpty() -> (if (playing.playing) "▶ " else "❚❚ ") + playing.title
             site.keeps(Kinds.TITLE) && memory.title.isNotEmpty() -> memory.title
             else -> site.host
         }
@@ -354,6 +366,8 @@ class MainActivity : Screen() {
         val add = card()
         if (looksLikeAddress(query)) {
             add.link(Glyphs.PLUS, "Make $query an app", null, "check it, then name it and pick its privacy") { addSite(query) }
+            add.link(Glyphs.EYE, "Peek at $query", null, Sessions.about("peek")) { Sessions.start(this, "peek", null, query) }
+            add.link(Glyphs.HIDDEN, "Open $query privately", null, Sessions.about("private")) { Sessions.start(this, "private", null, query) }
         } else {
             add.link(Glyphs.PLUS, "Add a site", null, "type its address, like $query.com") { startActivity(Intent(this, AddActivity::class.java)) }
         }
@@ -506,6 +520,14 @@ class MainActivity : Screen() {
         list.link(Glyphs.PLAY, "Open") {
             sheet.dismiss()
             Shortcuts.open(this, site)
+        }
+        list.link(Glyphs.EYE, "Peek", if (site.locks) "unlock" else null, "its own empty storage; you pick the privacy first") {
+            sheet.dismiss()
+            Sessions.start(this, "peek", site)
+        }
+        list.link(Glyphs.HIDDEN, "Open privately", if (site.locks) "unlock" else null, "strict blocking, nothing kept, its own storage") {
+            sheet.dismiss()
+            Sessions.start(this, "private", site)
         }
         list.link(Glyphs.GRID, "Group", Defaults.get(this).groups.firstOrNull { it.id == site.group }?.name ?: "none") {
             sheet.dismiss()

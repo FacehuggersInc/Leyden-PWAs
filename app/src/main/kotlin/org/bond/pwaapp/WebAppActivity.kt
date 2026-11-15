@@ -198,6 +198,7 @@ open class WebAppActivity : Activity() {
     var pageColor: Int? = null
     var allowOnce: String? = null
     val blockedHere = AtomicInteger()
+    val fpCounts = linkedMapOf<String, Int>()
     val client by lazy { Client() }
     private val blockedUnsaved = AtomicInteger()
     private val cssCache = HashMap<String, String>()
@@ -209,7 +210,11 @@ open class WebAppActivity : Activity() {
         Look.refresh(this)
         defaults = Defaults.get(this)
         val id = intent?.data?.lastPathSegment
-        val found = SiteStore.get(this, id)
+        val found = if (intent?.data?.host == "temp") {
+            intent.getStringExtra(Sessions.EXTRA)?.let { text -> try { Site.fromJson(org.json.JSONObject(text)) } catch (error: Exception) { null } }
+        } else {
+            SiteStore.get(this, id)
+        }
         if (found == null) {
             setTheme(android.R.style.Theme_Material_Light_NoActionBar)
             super.onCreate(savedInstanceState)
@@ -255,9 +260,10 @@ open class WebAppActivity : Activity() {
         val needsLock = LockState.needed(this, site)
         if ((site.splash && saved == null) || needsLock) showSplash()
         if (needsLock) lockNow() else begin()
-        if (saved == null) MemoryStore.opened(this, site)
+        if (saved == null && !temp) MemoryStore.opened(this, site)
         takeExtras(intent)
-        Updater.checkAll(this, site.id)
+        if (!temp) Updater.checkAll(this, site.id)
+        if (temp && saved == null) toast(if (site.session == "private") "Private: nothing is kept, and closing it erases everything" else "Peek: closing it erases everything")
     }
 
     private fun missing() {
@@ -376,6 +382,74 @@ open class WebAppActivity : Activity() {
         installScripts()
     }
 
+    var relaxed = false
+    private var relaxLoads = 0
+    private var relaxChip: View? = null
+    private var agentHidden: Boolean? = null
+
+    private fun wantsHidden(url: String?): Boolean = site.fp.model && !relaxed && !Relax.matches(site, url)
+
+    private fun applyAgent(url: String?) {
+        val settings = webView.settings
+        val hidden = wantsHidden(url)
+        val shape = Fingerprint.fromJson(site.fp.toJson()).also { it.model = hidden }
+        val agent = WebSettings.getDefaultUserAgent(this)
+        settings.userAgentString = if (site.desktop) desktopAgent(Fingerprint.agent(agent, shape)) else Fingerprint.agent(agent, shape)
+        Fingerprint.native(settings, shape)
+        agentHidden = hidden
+    }
+
+    private fun fixAgent(url: String): Boolean {
+        if (wantsHidden(url) == agentHidden) return false
+        applyAgent(url)
+        return true
+    }
+
+    fun relaxNow(loads: Int) {
+        relaxed = true
+        relaxLoads = loads
+        cssCache.clear()
+        applyAgent(pageUrl)
+        installScripts()
+        showRelaxChip()
+        webView.reload()
+    }
+
+    fun protectAgain(reload: Boolean) {
+        if (!relaxed) return
+        relaxed = false
+        relaxLoads = 0
+        cssCache.clear()
+        applyAgent(pageUrl)
+        installScripts()
+        relaxChip?.let { stage.removeView(it) }
+        relaxChip = null
+        if (reload) webView.reload() else toast("Protections are back on from the next page")
+    }
+
+    private fun showRelaxChip() {
+        relaxChip?.let { stage.removeView(it) }
+        val chip = line(8)
+        chip.background = surface(16f)
+        chip.elevation = dpf(6f)
+        chip.setPadding(dp(12), dp(6), dp(6), dp(6))
+        chip.put(glyph(Glyphs.SHIELD, T.danger, 14, 2f), dp(14), dp(14))
+        chip.put(text("Protections lowered for a security check", 12f, T.ink).oneLine(), 0, WRAP_CONTENT, 1f)
+        chip.put(primaryButtonTiny("Protect again") { protectAgain(false) }, WRAP_CONTENT, dp(32))
+        stage.addView(chip, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP).apply { setMargins(dp(10), dp(10) + topInset(), dp(10), 0) })
+        relaxChip = chip
+    }
+
+    private fun primaryButtonTiny(label: String, onClick: () -> Unit): View {
+        val view = text(label, 12f, T.onAccent, Fonts.sansMedium)
+        view.gravity = Gravity.CENTER
+        view.setPadding(dp(12), 0, dp(12), dp(1))
+        view.background = primaryBack(9f)
+        view.isClickable = true
+        view.setOnClickListener { onClick() }
+        return view
+    }
+
     fun applySettings() {
         val settings = webView.settings
         settings.textZoom = site.textSize
@@ -383,8 +457,7 @@ open class WebAppActivity : Activity() {
         settings.builtInZoomControls = site.zoom
         settings.safeBrowsingEnabled = defaults.checkSafeBrowsing
         settings.setGeolocationEnabled(site.location != "never")
-        val agent = WebSettings.getDefaultUserAgent(this)
-        settings.userAgentString = if (site.desktop) desktopAgent(agent) else agent
+        applyAgent(pageUrl.ifEmpty { site.url })
         if (Build.VERSION.SDK_INT >= 33) {
             settings.isAlgorithmicDarkeningAllowed = site.dark == "dark"
         } else if (Build.VERSION.SDK_INT >= 29) {
@@ -416,7 +489,8 @@ open class WebAppActivity : Activity() {
     private fun describeTask() {
         val bitmap: Bitmap? = SiteStore.face(this, site)
         @Suppress("DEPRECATION")
-        setTaskDescription(ActivityManager.TaskDescription(site.label, bitmap, site.color or 0xFF000000.toInt()))
+        val label = if (temp) Sessions.name(site.session) + " · " + site.label else site.label
+        setTaskDescription(ActivityManager.TaskDescription(label, bitmap, if (temp) 0xFF1C1C1A.toInt() else site.color or 0xFF000000.toInt()))
     }
 
     fun barColor(): Int = if (site.barColor == "page" && !outside) pageColor ?: site.color else site.color
@@ -477,7 +551,11 @@ open class WebAppActivity : Activity() {
         webView.loadUrl(site.url)
     }
 
+    val temp: Boolean
+        get() = this::site.isInitialized && site.session.isNotEmpty()
+
     fun reloadSite() {
+        if (temp) return
         val fresh = SiteStore.get(this, site.id) ?: return
         site = fresh
         snapshot = fresh.copy()
@@ -486,6 +564,12 @@ open class WebAppActivity : Activity() {
     }
 
     fun saveSite() {
+        if (temp) {
+            intent.putExtra(Sessions.EXTRA, site.toJson().toString())
+            snapshot = site.copy()
+            cssCache.clear()
+            return
+        }
         SiteStore.save(this, site)
         snapshot = site.copy()
         cssCache.clear()
@@ -517,6 +601,8 @@ open class WebAppActivity : Activity() {
     private var pendingSelect: String? = null
     private var pendingTest: String? = null
     var testPanel: TestPanel? = null
+    var adopted = false
+    private var stepUpShown = false
 
     private val pendingFiles = mutableListOf<Uri>()
 
@@ -532,9 +618,11 @@ open class WebAppActivity : Activity() {
         val out = mutableListOf<Pair<Boolean, String>>()
         val power = site.power
         val key = "window.__pwaMediaKey=${org.json.JSONObject.quote(mediaKey)};"
-        if (power.audio || power.pip) out += true to key + Media.SHIM
+        if (power.audio || power.pip || site.keeps(Kinds.PLAYING) || temp) out += true to key + Media.SHIM
         if (!power.insertionsOn || safeOnce) return out
         if (power.builtinPip) out += true to key + Media.PIP
+        if (site.fp.active) out += true to Fingerprint.COUNT
+        if (site.fp.needsScript && !relaxed) out += true to Fingerprint.script(site.fp, Relax.skips(site))
         if (power.builtinLists) out += true to Scripts.BOOT
         if (power.builtinLogin) out += true to Scripts.LOGIN
         if (power.builtinHidden && site.hidden.isNotEmpty()) out += false to Scripts.hidden(site)
@@ -616,7 +704,7 @@ open class WebAppActivity : Activity() {
     fun listCss(href: String): String {
         val host = hostOf(href)
         if (host.isEmpty()) return ""
-        val level = Blocker.level(snapshot, defaults, pageUrl.ifEmpty { href })
+        val level = if (relaxed) "off" else Blocker.level(snapshot, defaults, pageUrl.ifEmpty { href })
         val key = "$level|$host"
         synchronized(cssCache) {
             cssCache[key]?.let { return it }
@@ -721,6 +809,18 @@ open class WebAppActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun fpSeen(json: String?) {
+            val parsed = try {
+                org.json.JSONObject(json.orEmpty())
+            } catch (error: Exception) {
+                return
+            }
+            runOnUiThread {
+                for (name in parsed.keys()) fpCounts[name] = (fpCounts[name] ?: 0) + parsed.optInt(name)
+            }
+        }
+
+        @JavascriptInterface
         fun field(kind: String?) {
             runOnUiThread { loginField(kind.orEmpty()) }
         }
@@ -810,7 +910,7 @@ open class WebAppActivity : Activity() {
     }
 
     private fun applySecure() {
-        if ((site.locks && site.hideRecents) || site.privateMode) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if ((site.locks && site.hideRecents) || site.privateMode || (temp && site.sessionSecure)) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     private fun showHandle() {
@@ -888,6 +988,24 @@ open class WebAppActivity : Activity() {
             hideError()
             webView.reload()
         }, dp(200), dp(52))
+        if (!relaxed) {
+            box.put(secondaryButton("Lower them just for a security check", Glyphs.SHIELD) {
+                hideError()
+                relaxNow(2)
+            }, WRAP_CONTENT, dp(48))
+        }
+        if (!StepUp.isLowest(site)) {
+            box.put(secondaryButton("Try with lowest protections", Glyphs.SHIELD) {
+                hideError()
+                StepUp.lowest(site)
+                saveSite()
+                applySettings()
+                installScripts()
+                stepUpShown = false
+                webView.reload()
+            }, WRAP_CONTENT, dp(48))
+            box.put(text("Turns off ad blocking and fingerprinting protection, then lets you turn them back on one at a time.", 12f, T.muted).apply { gravity = Gravity.CENTER }, WRAP_CONTENT)
+        }
         box.put(quietButton("Open in the browser", Glyphs.BROWSER) { openBrowser(webView.url ?: site.url) }, WRAP_CONTENT, dp(44))
         (refresher.parent as ViewGroup).addView(box, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         errorView = box
@@ -1042,7 +1160,7 @@ open class WebAppActivity : Activity() {
     }
 
     var mediaPlaying = false
-    private var mediaKind = ""
+    var mediaKind = ""
     private var buttonsView: View? = null
     private var network: android.net.ConnectivityManager.NetworkCallback? = null
     private var keyDownAt = 0L
@@ -1174,9 +1292,15 @@ open class WebAppActivity : Activity() {
         return super.dispatchKeyEvent(event)
     }
 
+    var mediaTitle = ""
+    var mediaArtist = ""
+
     private fun mediaChanged(playing: Boolean, title: String, artist: String, kind: String) {
         mediaPlaying = playing
         mediaKind = kind
+        mediaTitle = title
+        mediaArtist = artist
+        NowPlaying.update(site, title, artist, playing, kind, hostOf(pageUrl))
         if (!site.power.audio) return
         if (playing || audioOwner == site.id) {
             audioOwner = site.id
@@ -1267,8 +1391,8 @@ open class WebAppActivity : Activity() {
     }
 
     fun screenshot() {
-        if ((site.locks && site.hideRecents) || site.privateMode) {
-            toast("${site.label} blocks screenshots while it’s ${if (site.privateMode) "private" else "locked"}")
+        if ((site.locks && site.hideRecents) || site.privateMode || (temp && site.sessionSecure)) {
+            toast("${site.label} blocks screenshots while it’s ${if (site.privateMode || temp) "private" else "locked"}")
             return
         }
         toast("Taking the whole page…")
@@ -1320,7 +1444,7 @@ open class WebAppActivity : Activity() {
             if (!url.startsWith("http")) return null
             val current = snapshot
             val page = pageUrl
-            val level = Blocker.level(current, defaults, page)
+            val level = if (relaxed) "off" else Blocker.level(current, defaults, page)
             val host = request.url.host?.lowercase().orEmpty()
             val verdict = Blocker.check(current, defaults, url, page, level)
             val third = !sameSite(host, hostOf(page).ifEmpty { current.host })
@@ -1346,6 +1470,11 @@ open class WebAppActivity : Activity() {
             if (url == allowOnce) {
                 allowOnce = null
                 return false
+            }
+            if (fixAgent(url)) {
+                allowOnce = url
+                view.loadUrl(url)
+                return true
             }
             val rewritten = Rewrite.apply(defaults.rewrites, url, "inside", site.id)
             if (rewritten != url) {
@@ -1378,6 +1507,7 @@ open class WebAppActivity : Activity() {
             pageUrl = url
             pageColor = null
             blockedHere.set(0)
+            fpCounts.clear()
             Live.start(site.id, url)
             hideError()
             noted.clear()
@@ -1392,6 +1522,14 @@ open class WebAppActivity : Activity() {
         override fun onPageFinished(view: WebView, url: String) {
             refresher.isRefreshing = false
             pageShown()
+            if (relaxed && relaxLoads > 0) {
+                relaxLoads--
+                if (relaxLoads == 0) protectAgain(false)
+            }
+            if (site.stepUp && !stepUpShown && errorView == null && !locked) {
+                stepUpShown = true
+                main.postDelayed({ if (!isFinishing) StepUpSheet(this@WebAppActivity).show() }, 600)
+            }
             fallbackScripts(url)
             if (site.power.insertionsOn && site.power.builtinTheme && !safeOnce) {
                 view.evaluateJavascript(Scripts.THEME) { value ->
@@ -1674,7 +1812,7 @@ open class WebAppActivity : Activity() {
         } else if (site.onOpen == "start") {
             webView.loadUrl(site.url)
         }
-        MemoryStore.opened(this, site)
+        if (!temp) MemoryStore.opened(this, site)
     }
 
     override fun onStart() {
@@ -1712,7 +1850,7 @@ open class WebAppActivity : Activity() {
 
     override fun onPause() {
         if (this::webView.isInitialized) {
-            if (!isInPictureInPictureMode) Snapshots.take(this, site, webView, locked)
+            if (!isInPictureInPictureMode && !temp) Snapshots.take(this, site, webView, locked)
             if (site.locks && !locked) LockState.touch(this, site.id)
             if (!(site.power.audio && mediaPlaying) && !isInPictureInPictureMode) webView.onPause()
             Storage.cookies(profile).flush()
@@ -1722,7 +1860,7 @@ open class WebAppActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        if (!this::site.isInitialized) return
+        if (!this::site.isInitialized || temp) return
         MemoryStore.spent(this, site, System.currentTimeMillis() - sessionStart)
         MemoryStore.blocked(this, site, blockedUnsaved.getAndSet(0))
         MemoryStore.save(this, site.id)
@@ -1731,12 +1869,13 @@ open class WebAppActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        if (this::webView.isInitialized && !site.privateMode) webView.saveState(outState)
+        if (this::webView.isInitialized && !site.privateMode && !temp) webView.saveState(outState)
     }
 
     override fun onDestroy() {
         if (this::webView.isInitialized) {
             Live.stop(site.id)
+            if (!temp) NowPlaying.clear(site.id)
             Popups.closeAll()
             val wipe = isFinishing && (site.privateMode || site.clearOnClose)
             if (wipe) {
@@ -1754,8 +1893,15 @@ open class WebAppActivity : Activity() {
                 audioOwner = null
             }
             network?.let { getSystemService(android.net.ConnectivityManager::class.java)?.unregisterNetworkCallback(it) }
+            if (temp && isFinishing && !adopted) {
+                webView.clearCache(true)
+                webView.clearHistory()
+                Storage.cookies(profile).removeAllCookies(null)
+                Storage.webStorage(profile).deleteAllData()
+            }
             (webView.parent as? ViewGroup)?.removeView(webView)
             webView.destroy()
+            if (temp && isFinishing && !adopted) Sessions.forget(profile)
         }
         super.onDestroy()
     }

@@ -186,6 +186,7 @@ object Blocker {
     fun level(site: Site, defaults: Defaults, pageUrl: String?): String {
         val pageHost = hostOf(pageUrl)
         if (pageHost.isNotEmpty() && site.unblocked.any { Filters.within(pageHost, it) }) return "off"
+        if (Relax.matches(site, pageUrl)) return "off"
         if (site.inScope(pageUrl)) return site.blocking
         return when (site.otherBlockingNow(defaults)) {
             "off" -> "off"
@@ -196,6 +197,7 @@ object Blocker {
 
     fun check(site: Site, defaults: Defaults, url: String, pageUrl: String?, level: String): Verdict? {
         if (level == "off") return null
+        if (site.fp.relaxChecks && Relax.known(url)) return null
         val host = hostOf(url)
         if (host.isEmpty()) return null
         val pageHost = hostOf(pageUrl).ifEmpty { site.host }

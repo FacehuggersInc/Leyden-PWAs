@@ -24,6 +24,7 @@ object Kept {
         kept.hideRecents = true
         kept.granted = mutableSetOf()
         kept.trustedCertificate = null
+        kept.storageName = ""
         val power = kept.power
         power.buttons.removeAll { it.does == "script" }
         val actions = listOf(power.volumeUp, power.volumeDown, power.swipeLeft, power.swipeRight, power.swipeDown)

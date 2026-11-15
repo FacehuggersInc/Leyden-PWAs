@@ -16,9 +16,10 @@ object Kinds {
     const val BLOCKED = "blocked"
     const val OPENS = "opens"
     const val SHORTCUTS = "shortcuts"
+    const val PLAYING = "playing"
 
-    val ALL = listOf(RECENT, TITLE, UNREAD, BLOCKED, OPENS, SHORTCUTS)
-    val HELPFUL = setOf(RECENT, TITLE, UNREAD)
+    val ALL = listOf(RECENT, TITLE, UNREAD, PLAYING, BLOCKED, OPENS, SHORTCUTS)
+    val HELPFUL = setOf(RECENT, TITLE, UNREAD, PLAYING)
 
     fun name(kind: String): String = when (kind) {
         RECENT -> "recent pages"
@@ -26,6 +27,7 @@ object Kinds {
         UNREAD -> "unread count"
         BLOCKED -> "blocked counts"
         OPENS -> "when and how often opened"
+        PLAYING -> "what’s playing"
         else -> "shortcut use"
     }
 
@@ -35,6 +37,7 @@ object Kinds {
         UNREAD -> "read from the page title, like “Inbox (3)”"
         BLOCKED -> "how many ads and trackers were stopped, by day"
         OPENS -> "times opened and time spent, for sorting the list"
+        PLAYING -> "the title of what plays, on any page in the app, shown on your list and in quick settings; only kept while it runs"
         else -> "which of the site’s shortcuts you use, for ordering them"
     }
 
@@ -44,6 +47,7 @@ object Kinds {
         UNREAD -> Glyphs.MAIL
         BLOCKED -> Glyphs.SHIELD
         OPENS -> Glyphs.CLOCK
+        PLAYING -> Glyphs.MUSIC
         else -> Glyphs.SORT
     }
 }
@@ -76,6 +80,13 @@ class Site(
 ) {
     var orientation = "any"
     var group = ""
+    var session = ""
+    var sessionId = ""
+    var sessionSecure = true
+    var storageName = ""
+    var stepUp = false
+    var relaxPages = mutableListOf<String>()
+    var fp = Fingerprint()
     var barColor = "page"
     var splash = true
     var dark = "site"
@@ -191,6 +202,13 @@ class Site(
             .put("created", created)
             .put("orientation", orientation)
             .put("group", group)
+            .put("session", session)
+            .put("sessionId", sessionId)
+            .put("sessionSecure", sessionSecure)
+            .put("storageName", storageName)
+            .put("stepUp", stepUp)
+            .put("relaxPages", JSONArray(relaxPages))
+            .put("fp", fp.toJson())
             .put("barColor", barColor)
             .put("splash", splash)
             .put("dark", dark)
@@ -250,6 +268,7 @@ class Site(
             site.thirdPartyCookies = defaults.thirdPartyCookies
             site.clearOnClose = defaults.clearOnClose
             site.blocking = defaults.blocking
+            site.fp = Fingerprint(defaults.fingerprint)
             site.lastLevel = if (defaults.blocking == "off") "standard" else defaults.blocking
             return site
         }
@@ -288,6 +307,13 @@ class Site(
             )
             site.orientation = pick(json, "orientation", listOf("any", "portrait", "landscape"), "any")
             site.group = json.optString("group")
+            site.session = json.optString("session")
+            site.sessionId = json.optString("sessionId")
+            site.sessionSecure = json.optBoolean("sessionSecure", true)
+            site.storageName = json.optString("storageName")
+            site.stepUp = json.optBoolean("stepUp")
+            site.relaxPages = strings(json, "relaxPages")
+            site.fp = Fingerprint.fromJson(json.optJSONObject("fp"))
             site.barColor = pick(json, "barColor", listOf("page", "app"), "page")
             site.splash = json.optBoolean("splash", true)
             site.dark = pick(json, "dark", listOf("site", "dark", "light"), "site")

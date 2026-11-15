@@ -27,6 +27,10 @@ class GlobalActivity : Screen() {
             "everything" -> "everything"
             else -> "let me pick"
         }, "${defaults.remember.size} of ${Kinds.ALL.size} kinds kept for new apps") { rememberSheet() }
+        privacy.choice(Glyphs.SHIELD, "fingerprinting", "standard hides your phone model and similar details; strict also blurs canvas, WebGL and audio. Each app can change it.", listOf(Option("off"), Option("standard", "std"), Option("strict")), defaults.fingerprint) {
+            defaults.fingerprint = it
+            save()
+        }
         privacy.choice(Glyphs.COOKIE, "cookies from other sites", null, listOf(Option("allow"), Option("block")), if (defaults.thirdPartyCookies) "allow" else "block") {
             defaults.thirdPartyCookies = it == "allow"
             save()

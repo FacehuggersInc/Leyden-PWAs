@@ -156,6 +156,7 @@ object MemoryStore {
                 memory.timeSpent = 0L
             }
             Kinds.SHORTCUTS -> memory.shortcuts.clear()
+            Kinds.PLAYING -> NowPlaying.clear(id)
         }
         save(context, id)
     }
@@ -179,6 +180,7 @@ object MemoryStore {
         Kinds.UNREAD -> if (memory.unread < 0) "nothing yet" else "${memory.unread}, read from the title"
         Kinds.BLOCKED -> if (memory.blocked.isEmpty()) "nothing yet" else "${memory.blocked.values.sum()} over ${plural(memory.blocked.size, "day")}"
         Kinds.OPENS -> if (memory.opens.isEmpty()) "nothing yet" else "${plural(memory.opens.size, "time")}, ${duration(memory.timeSpent)} in all"
+        Kinds.PLAYING -> "only while it runs, never saved"
         else -> if (memory.shortcuts.isEmpty()) "nothing yet" else memory.shortcuts.entries.joinToString(", ") { "${it.key} ${it.value}" }
     }
 }

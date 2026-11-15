@@ -36,6 +36,7 @@ class CheckResult {
     var scriptsOwn = 0
     var scriptsInline = 0
     val scriptHosts = LinkedHashMap<String, Int>()
+    val fingerprinting: MutableMap<String, Int> = Collections.synchronizedMap(LinkedHashMap())
 
     fun record(): CheckRecord = CheckRecord(System.currentTimeMillis(), scriptsOwn, scriptsInline, LinkedHashMap(scriptHosts),
         scriptHosts.keys.filter { host -> trackerDomains.any { Filters.within(host, it) } }.toSet(), trackers.size, thirdCookies)
@@ -84,6 +85,24 @@ class SiteCheck(
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = true
         web.settings.safeBrowsingEnabled = safeBrowsing
+        web.addJavascriptInterface(object {
+            @android.webkit.JavascriptInterface
+            fun fpSeen(json: String?) {
+                val parsed = try {
+                    org.json.JSONObject(json.orEmpty())
+                } catch (error: Exception) {
+                    return
+                }
+                for (name in parsed.keys()) result.fingerprinting[name] = (result.fingerprinting[name] ?: 0) + parsed.optInt(name)
+            }
+        }, "PwaApp")
+        if (Storage.earlyScripts) {
+            try {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(web, Fingerprint.COUNT, setOf("*"))
+            } catch (error: RuntimeException) {
+                Unit
+            }
+        }
         val cookies = Storage.cookies(PROFILE)
         cookies.setAcceptCookie(true)
         cookies.setAcceptThirdPartyCookies(web, true)

@@ -115,6 +115,7 @@
 
         <activity android:name=".ItemActivity" android:exported="false" />
         <activity android:name=".RunsActivity" android:exported="false" />
+        <activity android:name=".FingerprintActivity" android:exported="false" />
         <activity android:name=".BuilderActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".CodeActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".SourceActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />

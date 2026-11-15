@@ -102,6 +102,8 @@ object Copies {
         json.put("name", name)
         json.put("created", System.currentTimeMillis())
         val made = Site.fromJson(json) ?: from
+        made.fp = from.fp.copyFresh()
+        made.storageName = ""
         if (!settings) {
             val fresh = Site.fresh(Defaults.get(context))
             made.orientation = fresh.orientation
@@ -272,7 +274,8 @@ object Media {
         "ms.setActionHandler=function(a,h){handlers[a]=h;try{orig(a,h);}catch(e){}};}}catch(e){}" +
         "function report(){try{var m=[].slice.call(document.querySelectorAll('video,audio'));var live=m.filter(function(x){return !x.paused&&!x.ended})[0];var any=live||m[0];" +
         "var md=navigator.mediaSession&&navigator.mediaSession.metadata;PwaApp.media(window.__pwaMediaKey||'',live?'playing':'paused',(md&&md.title)||document.title,(md&&md.artist)||'',any&&any.tagName==='VIDEO'?'video':'audio');}catch(e){}}" +
-        "['play','pause','ended'].forEach(function(k){document.addEventListener(k,function(){setTimeout(report,50);},true);});})();"
+        "['play','playing','pause','ended','loadedmetadata','emptied'].forEach(function(k){document.addEventListener(k,function(){setTimeout(report,50);},true);});" +
+        "try{var ms2=navigator.mediaSession;if(ms2){var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(ms2),'metadata');if(d&&d.set){Object.defineProperty(ms2,'metadata',{get:function(){return d.get.call(ms2);},set:function(v){d.set.call(ms2,v);setTimeout(report,50);},configurable:true});}}}catch(e){}})();"
 
     const val PIP = """(function(){if(window.__pwaPip||!window.HTMLVideoElement)return;var P={v:null,saved:null,html:null};window.__pwaPip=P;
 function fill(v){if(P.v&&P.v!==v)P.leave(true);P.v=v;P.saved=v.getAttribute('style');P.html=document.documentElement.getAttribute('style');
@@ -608,5 +611,25 @@ object Snapshots {
 
     fun drop(context: Context, id: String) {
         file(context, id).delete()
+    }
+}
+
+class Playing(val title: String, val artist: String, val playing: Boolean, val kind: String, val host: String)
+
+object NowPlaying {
+    private val now = HashMap<String, Playing>()
+
+    fun update(site: Site, title: String, artist: String, playing: Boolean, kind: String, host: String) {
+        if (!site.keeps(Kinds.PLAYING) || site.locks || site.session.isNotEmpty()) {
+            now.remove(site.id)
+            return
+        }
+        now[site.id] = Playing(title, artist, playing, kind, host)
+    }
+
+    fun get(site: Site): Playing? = if (site.keeps(Kinds.PLAYING) && !site.locks) now[site.id] else null
+
+    fun clear(id: String) {
+        now.remove(id)
     }
 }

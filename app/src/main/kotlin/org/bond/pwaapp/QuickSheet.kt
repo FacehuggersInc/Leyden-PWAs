@@ -103,6 +103,7 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         val words = activity.column(1)
         words.put(activity.text(activity.pageTitle.ifEmpty { site.label }, 15f, T.ink, Fonts.sansBold).oneLine())
         words.put(activity.text(hostOf(activity.pageUrl) + pathOf(activity.pageUrl), 11f, T.muted, Fonts.mono).oneLine())
+        if (activity.temp) words.put(activity.mono(Sessions.name(site.session).uppercase() + " · NOTHING KEPT", 9f, T.accent))
         head.put(words, 0, WRAP_CONTENT, 1f)
         head.put(activity.secondaryButton("select", Glyphs.PICKER) { close { activity.startHider() } }, WRAP_CONTENT, activity.dp(38))
         body.put(head)
@@ -135,6 +136,7 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         rest.removeAllViews()
         when {
             query.isNotEmpty() -> results()
+            activity.temp -> session()
             full -> everything()
             else -> starter()
         }
@@ -191,7 +193,77 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         rest.put(flow)
     }
 
+    private fun levels(): List<Option> =
+        if (activity.site.session == "private") listOf(Option("standard"), Option("strict")) else listOf(Option("off"), Option("standard", "std"), Option("strict"))
+
+    private fun playingCard() {
+        val site = activity.site
+        if (!site.keeps(Kinds.PLAYING) && !activity.temp) return
+        if (activity.mediaTitle.isEmpty() && !activity.mediaPlaying) return
+        rest.put(activity.sectionTitle("NOW PLAYING", Glyphs.MUSIC))
+        val card = activity.column(8)
+        card.background = activity.surface()
+        card.setPadding(activity.dp(14), activity.dp(12), activity.dp(14), activity.dp(12))
+        card.put(activity.text(activity.mediaTitle.ifEmpty { "Untitled" }, 14f, T.ink, Fonts.sansMedium).apply { maxLines = 2 })
+        val by = listOf(activity.mediaArtist, if (activity.mediaPlaying) "playing" else "paused", activity.mediaKind).filter { it.isNotEmpty() }.joinToString(" · ")
+        card.put(activity.text(by, 12f, T.muted).oneLine())
+        val keys = activity.line(8)
+        keys.put(activity.toggleKey(Glyphs.PREV, "back", false) { activity.webView.evaluateJavascript(Media.action("previoustrack"), null) }, 0, WRAP_CONTENT, 1f)
+        keys.put(activity.toggleKey(if (activity.mediaPlaying) Glyphs.PAUSE else Glyphs.PLAY, if (activity.mediaPlaying) "pause" else "play", activity.mediaPlaying) {
+            activity.webView.evaluateJavascript(Media.action(if (activity.mediaPlaying) "pause" else "play"), null)
+            activity.webView.postDelayed({ fill() }, 300)
+        }, 0, WRAP_CONTENT, 1f)
+        keys.put(activity.toggleKey(Glyphs.NEXT, "ahead", false) { activity.webView.evaluateJavascript(Media.action("nexttrack"), null) }, 0, WRAP_CONTENT, 1f)
+        card.put(keys)
+        rest.put(card)
+    }
+
+    private fun adopt() {
+        val site = activity.site
+        val inner = Sheet(activity)
+        inner.body.put(activity.text("Make it a full app", 18f, T.ink, Fonts.sansBold))
+        inner.body.put(activity.text("It becomes a normal app on your list, with these privacy choices and its own settings. It starts remembering what you choose for new apps.", 13f, T.muted))
+        val name = activity.field(site.label, "Name")
+        inner.body.put(name)
+        var keep = true
+        val options = activity.card()
+        options.switch(Glyphs.COOKIE, "keep what you’re signed into", "this peek’s logins, cookies and site data move into the new app instead of being erased", keep) { keep = it }
+        inner.body.put(options.view)
+        inner.body.put(activity.primaryButton("Make it an app", Glyphs.PLUS) {
+            inner.dismiss()
+            sheet.dismiss()
+            Sessions.adopt(activity, name.text.toString().trim().ifEmpty { site.label }, keep)
+        }, MATCH_PARENT, activity.dp(50))
+        inner.show()
+    }
+
+    private fun session() {
+        val site = activity.site
+        playingCard()
+        actions()
+        toggles(false)
+        val card = activity.card()
+        card.choice(Glyphs.SHIELD, "blocking", if (site.session == "private") "private can step down to standard, never off" else null, levels(), site.blocking) { blocking(it) }
+        card.stepper(Glyphs.TEXT, "text size", "${site.textSize}%", { change { it.textSize = (it.textSize - 10).coerceAtLeast(50) } }, { change { it.textSize = (it.textSize + 10).coerceAtMost(200) } })
+        card.switch(Glyphs.ZOOM, "pinch to zoom", null, site.zoom) { on -> change { it.zoom = on } }
+        card.action(Glyphs.SEARCH, "find on this page", null, "find") { close { FindBar.show(activity, "") } }
+        security(card)
+        card.link(Glyphs.SHIELD, "turn protections on step by step", null, "start from the lowest, then add one at a time") { stepUp() }
+        card.value(Glyphs.EYE, "fingerprinting", site.fp.summary(), Fingerprint.describe(activity.fpCounts).let { if (it.isEmpty()) "nothing read on this page yet" else "this page read: $it" })
+        if (site.session == "peek") {
+            card.link(Glyphs.PLUS, "make it a full app", null, "keeps these privacy choices, and what you’re signed into if you like") { adopt() }
+        } else if (SiteStore.get(activity, site.id) == null) {
+            card.link(Glyphs.PLUS, "make it an app", null, "a normal app with its own settings; nothing from this private session comes along") {
+                close { activity.startActivity(Intent(activity, AddActivity::class.java).putExtra(AddActivity.ADDRESS, activity.pageUrl.ifEmpty { site.url })) }
+            }
+        }
+        rest.put(card.view)
+        rest.put(activity.text(Sessions.about(site.session), 12f, T.muted))
+        rest.put(activity.secondaryButton("End and erase", Glyphs.TRASH, T.danger) { close { activity.finishAndRemoveTask() } }, MATCH_PARENT, activity.dp(46))
+    }
+
     private fun starter() {
+        playingCard()
         actions()
         toggles(false)
         runList()
@@ -202,6 +274,7 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
     private fun everything() {
         val site = activity.site
         val defaults = activity.defaults
+        playingCard()
         actions()
         if (site.shortcuts.isNotEmpty()) {
             rest.put(activity.sectionTitle("SHORTCUTS", Glyphs.GRID))
@@ -239,6 +312,11 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         more.action(Glyphs.CAMERA, "full-page screenshot", if ((site.locks && site.hideRecents) || site.privateMode) "blocked while locked or private" else "the whole page as one image", "take") { close { activity.screenshot() } }
         if (Bubbles.supported()) more.action(Glyphs.BUBBLE, "open as a bubble", "floats over other apps", "open") { close { Bubbles.show(activity, site) } }
         more.link(Glyphs.SHIELD, "blocked on this page", activity.blockedHere.get().toString()) { openBlocking() }
+        security(more)
+        more.link(Glyphs.SHIELD, "turn protections on step by step", if (site.stepUp) "in progress" else null, "for when the site breaks: start from the lowest, then add one at a time") { stepUp() }
+        more.link(Glyphs.EYE, "fingerprinting", site.fp.summary(), Fingerprint.describe(activity.fpCounts).let { if (it.isEmpty()) "nothing read on this page yet" else "this page read: $it" }) {
+            close { activity.startActivity(Intent(activity, FingerprintActivity::class.java).putExtra(AppSettingsActivity.SITE, site.id)) }
+        }
         rest.put(more.view)
 
         runList()
@@ -291,7 +369,7 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         out += QuickEntry(Glyphs.FULL, "full screen", null, "immersive hide bars", site.fullScreen) { toggle("full") }
         out += QuickEntry(Glyphs.SUN, "keep the screen on", null, "screen on awake", site.screenOn) { toggle("screen") }
         out += QuickEntry(Glyphs.PULL, "pull to refresh", null, "pull refresh swipe down", site.pullToRefresh) { toggle("pull") }
-        out += QuickEntry(Glyphs.SHIELD, "blocking", "ads and trackers", "block ads trackers filter", options = listOf(Option("off"), Option("standard", "std"), Option("strict")), chosen = site.blocking, pick = { blocking(it) }) { }
+        out += QuickEntry(Glyphs.SHIELD, "blocking", "ads and trackers", "block ads trackers filter", options = levels(), chosen = site.blocking, pick = { blocking(it) }) { }
         out += QuickEntry(Glyphs.ZOOM, "pinch to zoom", null, "zoom", site.zoom) { change { it.zoom = !it.zoom } }
         out += QuickEntry(Glyphs.TEXT, "text size", "${site.textSize}%", "font bigger smaller", options = listOf(Option("80", "80%"), Option("100", "100%"), Option("120", "120%"), Option("150", "150%")), chosen = site.textSize.toString(), pick = { key -> change { it.textSize = key.toInt() } }) { }
         out += QuickEntry(Glyphs.LINK, "other sites open", null, "links outside inside browser ask", options = listOf(Option("inside"), Option("browser"), Option("ask")), chosen = site.linksNow(defaults), pick = { key -> change { it.links = key } }) { }
@@ -299,6 +377,10 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         out += QuickEntry(Glyphs.WARN, "warn before risky other sites", null, "warnings", site.warnRiskyNow(defaults)) { change { it.warnRisky = !it.warnRiskyNow(defaults) } }
         out += QuickEntry(Glyphs.CLOCK, "on open", null, "resume start page", options = listOf(Option("resume"), Option("start")), chosen = site.onOpen, pick = { key -> change { it.onOpen = key } }) { }
         out += QuickEntry(Glyphs.PHONE, "screen orientation", null, "rotate portrait landscape", options = listOf(Option("any"), Option("portrait", "up"), Option("landscape", "side")), chosen = site.orientation, pick = { key -> change { it.orientation = key } }) { }
+        if (activity.temp) {
+            out += QuickEntry(Glyphs.TRASH, "end and erase", null, "close private peek session") { close { activity.finishAndRemoveTask() } }
+            return out
+        }
         if (site.ownStorage && Storage.separate) out += QuickEntry(Glyphs.HIDDEN, "private mode", "applies from the next time it opens", "incognito private", site.privateMode) { change { it.privateMode = !it.privateMode } }
         out += QuickEntry(Glyphs.EYE, "what ${site.label} remembers", null, "memory storage history privacy cookies") { openMemory() }
         out += QuickEntry(Glyphs.HAND, "controls", "volume keys, swipes, your buttons", "buttons keys swipe volume") { openControls() }
@@ -341,6 +423,35 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         val list = activity.card()
         QuickEntry.render(list, found.take(30))
         rest.put(list.view)
+    }
+
+    private fun security(card: Card) {
+        val site = activity.site
+        if (activity.relaxed) {
+            card.action(Glyphs.SHIELD, "protections are lowered for a check", "through the check? put them back", "protect") { close { activity.protectAgain(false) } }
+        } else {
+            card.action(Glyphs.SHIELD, "lower protections for a security check", "until you’re through: this load and the next, then they come back on their own", "lower") { close { activity.relaxNow(2) } }
+        }
+        card.link(Glyphs.LIST, "pages with lower protections", site.relaxPages.size.toString(), "always lower them on these pages only, like a site’s check page") {
+            close { activity.relaxPagesSheet(site, activity.pageUrl) { activity.saveSite(); activity.installScripts() } }
+        }
+    }
+
+    private fun stepUp() {
+        val site = activity.site
+        sheet.dismiss()
+        if (StepUp.isLowest(site) || site.stepUp) {
+            StepUpSheet(activity).show()
+            return
+        }
+        activity.ask("Start from the lowest protections?", "Ad blocking and fingerprinting protection turn off, then you turn each back on and see what breaks.", "Start") {
+            StepUp.lowest(site)
+            activity.saveSite()
+            activity.applySettings()
+            activity.installScripts()
+            activity.webView.reload()
+            StepUpSheet(activity).show()
+        }
     }
 
     private fun blocking(key: String) {
@@ -390,7 +501,9 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
             "pull" -> change { it.pullToRefresh = !it.pullToRefresh }
             "block" -> {
                 change {
-                    if (it.blocking == "off") {
+                    if (it.session == "private") {
+                        it.blocking = if (it.blocking == "strict") "standard" else "strict"
+                    } else if (it.blocking == "off") {
                         it.blocking = it.lastLevel
                     } else {
                         it.lastLevel = it.blocking
