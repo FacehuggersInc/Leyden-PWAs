@@ -1,14 +1,81 @@
-# PWA App
+# Leyden PWAs
 
-A custom android app to make PWA's easier
+Turn any website into its own Android app, with customization, privacy and clarity built in.
 
-An Android app in Kotlin.
+## Why
 
-- `sh scripts/run.sh` builds it, installs it on the connected device and opens it.
-- `sh scripts/logcat.sh` shows its log.
-- `./gradlew assembleDebug` builds `app/build/outputs/apk/debug/app-debug.apk`.
-- `./gradlew testDebugUnitTest` runs the tests.
+I wanted to make PWAs with customization, privacy, clarity and usefulness built in, and couldn't find any on Google Play, or ones I could trust online. So I built one.
 
-The device needs USB or wireless debugging turned on in its developer options.
-`local.properties` says where the Android SDK is; `sh scripts/find-sdk.sh` writes it.
-`sh scripts/make-wrapper.sh` remakes `./gradlew` if it is missing, with Gradle installed.
+## What it does
+
+**Apps from any site**
+- Each app gets its own icon, its own window in recents, and its own storage and logins.
+- The page always stays above the keyboard.
+- Before you add a site, Leyden checks it in a throwaway browser and shows you the results as they come in: whether it responded, trackers, cookies from other sites, scripts, and certificate problems.
+
+**Privacy you can see**
+- You choose what Leyden remembers for each app. Off means it's never written.
+- Ad and tracker blocking uses EasyList, EasyPrivacy and your own rules, per app or for all of them.
+- You get warnings for sites that aren't encrypted, are known for tracking, or send you somewhere you didn't tap.
+- Apps can be locked with a PIN or fingerprint. Nothing loads until you unlock it.
+- Private mode wipes the app when it closes.
+- Each app has a storage page that lists everything kept for it, with clear buttons.
+
+**Make sites work your way**
+- Add your own styles and scripts, or install userscripts and userstyles from a web address or a Git repository. You can read the whole file before anything is added.
+- Each insertion has its own triggers, conditions and load order, with a test panel that shows what it's doing on the page.
+- Select lets you hide parts of a page, or target them for scripts and auto actions.
+- Buttons, volume keys and swipes can run built-in actions or your scripts.
+
+**Everyday extras**
+- Quick settings has search, find on the page, and toggles.
+- Links can open in the right app, with rewrites like reddit.com → old.reddit.com.
+- You can share text, links and files into an app.
+- Addresses can change by network, like your home Wi-Fi or Tailscale.
+- Proxy for chosen sites only.
+- Background audio, picture-in-picture, and bubbles.
+- A download folder for each app, plus full-page screenshots.
+- Second copies of an app, each with its own login.
+- Works with your password manager through Android autofill.
+
+**Your home screen**
+- Search your apps, their recent pages, or type an address to add one.
+- Running apps show what you left them on.
+- Group apps however you like.
+- The app's color follows your phone or one you pick.
+
+## Build
+
+Needs JDK 17+ and the Android SDK (platform 37, build-tools 36).
+
+```
+sh scripts/find-sdk.sh
+./gradlew assembleDebug
+sh scripts/run.sh
+```
+
+Run the tests with `./gradlew test`.
+
+Separate storage per app needs Android System WebView 110 or newer. Settings › about this phone shows what works on your device.
+
+## Limits
+
+- Passkeys don't work inside apps like this. Android only allows them in browsers and a site's own app.
+- Android allows one proxy for the whole app. Your list decides which sites use it.
+- Bubbles need Android 11+. The blur reveal needs Android 12+.
+- Files can only be shared into sites that accept them in their manifest.
+- Blocking can't stop ads served from a site's own server, scriptlet filters, or WebSocket traffic.
+
+## Code
+
+All in `app/src/main/kotlin/org/bond/pwaapp`, plain Kotlin with no AppCompat. The filter engine, rules and selector parsing are covered by unit tests.
+
+| Area | Files |
+|---|---|
+| Apps and settings | `Site.kt`, `Defaults.kt`, `Memory.kt`, `Kept.kt` |
+| The app window | `WebAppActivity.kt`, `WebSheets.kt`, `QuickSheet.kt`, `PagePanels.kt` |
+| Blocking | `Filters.kt`, `Blocker.kt`, `Rules.kt` |
+| Adding and checking sites | `AddActivity.kt`, `SiteLookup.kt`, `SiteCheck.kt` |
+| Insertions | `Addons.kt`, `Runtime.kt`, `Sources.kt`, `Scripts.kt`, `Selectors.kt` |
+| Extras | `Powers.kt`, `Net.kt`, `RoutingActivities.kt`, `ControlsActivity.kt` |
+| Look | `Ui.kt`, `Glyphs.kt`, `Screen.kt`, `Brand.kt` |

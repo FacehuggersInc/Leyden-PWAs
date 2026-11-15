@@ -6,11 +6,15 @@
     android:viewportHeight="108">
 
     <path
-        android:fillColor="@color/launcher_mark"
-        android:pathData="M40,38h28a6,6 0,0 1,6 6v20a6,6 0,0 1,-6 6H40a6,6 0,0 1,-6 -6V44a6,6 0,0 1,6 -6z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M38,36h32a4,4 0,0 1,4 4v28a4,4 0,0 1,-4 4H38a4,4 0,0 1,-4 -4V40a4,4 0,0 1,4 -4zM34,46h40" />
 
     <path
-        android:fillColor="@color/launcher_background"
-        android:pathData="M42,46h24v4H42zM42,54h16v4H42z" />
+        android:fillColor="@color/launcher_mark"
+        android:pathData="M44,54h20a3,3 0,0 1,3 3v6a3,3 0,0 1,-3 3H44a3,3 0,0 1,-3 -3v-6a3,3 0,0 1,3 -3z" />
 
 </vector>

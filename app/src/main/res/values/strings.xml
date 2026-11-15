@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PWA App</string>
-    <string name="greeting">Hello from PWA App</string>
-    <string name="message_hint">Type here; the keyboard pushes this up</string>
+    <string name="app_name">Leyden PWAs</string>
+    <string name="share_label">Make it an app</string>
+    <string name="send_label">Send to an app</string>
+    <string name="link_label">Leyden PWAs</string>
 </resources>

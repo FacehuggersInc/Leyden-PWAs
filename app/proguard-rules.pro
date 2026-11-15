@@ -1,1 +1,4 @@
-# Rules for R8 when building a release. The defaults cover most apps.
+-keepattributes JavascriptInterface
+-keepclassmembers class org.bond.pwaapp.WebAppActivity$Bridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

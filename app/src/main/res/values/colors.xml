@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launcher_background">#1E2A24</color>
-    <color name="launcher_mark">#3DDC84</color>
+    <color name="accent">#E8590C</color>
+    <color name="app_background">#EDEDEA</color>
+    <color name="launcher_background">#1C1C1A</color>
+    <color name="launcher_mark">#F2B705</color>
 </resources>
