@@ -249,6 +249,7 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         card.action(Glyphs.SEARCH, "find on this page", null, "find") { close { FindBar.show(activity, "") } }
         security(card)
         card.link(Glyphs.SHIELD, "turn protections on step by step", null, "start from the lowest, then add one at a time") { stepUp() }
+        card.link(Glyphs.CODE, "inspect", plural(activity.inspector.requests.size, "request"), "network, page, browser and console") { close { InspectSheet(activity).show() } }
         card.value(Glyphs.EYE, "fingerprinting", site.fp.summary(), Fingerprint.describe(activity.fpCounts).let { if (it.isEmpty()) "nothing read on this page yet" else "this page read: $it" })
         if (site.session == "peek") {
             card.link(Glyphs.PLUS, "make it a full app", null, "keeps these privacy choices, and what you’re signed into if you like") { adopt() }
@@ -314,6 +315,7 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         more.link(Glyphs.SHIELD, "blocked on this page", activity.blockedHere.get().toString()) { openBlocking() }
         security(more)
         more.link(Glyphs.SHIELD, "turn protections on step by step", if (site.stepUp) "in progress" else null, "for when the site breaks: start from the lowest, then add one at a time") { stepUp() }
+        more.link(Glyphs.CODE, "inspect", plural(activity.inspector.requests.size, "request"), "network, page, browser and console, like developer tools") { close { InspectSheet(activity).show() } }
         more.link(Glyphs.EYE, "fingerprinting", site.fp.summary(), Fingerprint.describe(activity.fpCounts).let { if (it.isEmpty()) "nothing read on this page yet" else "this page read: $it" }) {
             close { activity.startActivity(Intent(activity, FingerprintActivity::class.java).putExtra(AppSettingsActivity.SITE, site.id)) }
         }
@@ -363,6 +365,7 @@ class QuickSheet(private val activity: WebAppActivity, private val refresh: (() 
         out += QuickEntry(Glyphs.RELOAD, "reload", null, "refresh page again") { close { activity.webView.reload() } }
         out += QuickEntry(Glyphs.SHARE, "share this page", null, "send link") { close { activity.share(activity.pageUrl, activity.pageTitle) } }
         out += QuickEntry(Glyphs.BROWSER, "open in browser", null, "chrome firefox external") { close { activity.openBrowser(activity.pageUrl) } }
+        out += QuickEntry(Glyphs.CODE, "inspect", "network, page, browser and console", "developer tools dev mode network requests console headers cookies storage timing certificate user agent") { close { InspectSheet(activity).show() } }
         out += QuickEntry(Glyphs.PICKER, "select", "hide, target or copy part of the page", "hide element picker target copy selector") { close { activity.startHider() } }
         out += QuickEntry(Glyphs.MOON, "dark mode", null, "theme night", site.dark == "dark") { toggle("dark") }
         out += QuickEntry(Glyphs.DESKTOP, "desktop site", null, "desktop mode big screen", site.desktop) { toggle("desktop") }

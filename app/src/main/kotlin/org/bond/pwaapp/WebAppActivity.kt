@@ -178,7 +178,8 @@ open class WebAppActivity : Activity() {
     private val handlers = mutableListOf<ScriptHandler>()
     private val main = Handler(Looper.getMainLooper())
     private var backCallback: Any? = null
-    private var profile: String? = null
+    var profile: String? = null
+        private set
     private var sessionStart = 0L
     private var locked = false
     private var promptOnResume = false
@@ -199,6 +200,7 @@ open class WebAppActivity : Activity() {
     var allowOnce: String? = null
     val blockedHere = AtomicInteger()
     val fpCounts = linkedMapOf<String, Int>()
+    val inspector = Inspector()
     val client by lazy { Client() }
     private val blockedUnsaved = AtomicInteger()
     private val cssCache = HashMap<String, String>()
@@ -1439,7 +1441,10 @@ open class WebAppActivity : Activity() {
 
     inner class Client : WebViewClient() {
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-            if (request.isForMainFrame) return null
+            if (request.isForMainFrame) {
+                inspector.request(request, false, "", "", false)
+                return null
+            }
             val url = request.url.toString()
             if (!url.startsWith("http")) return null
             val current = snapshot
@@ -1449,6 +1454,7 @@ open class WebAppActivity : Activity() {
             val verdict = Blocker.check(current, defaults, url, page, level)
             val third = !sameSite(host, hostOf(page).ifEmpty { current.host })
             if (verdict != null || third) Live.add(current.id, Hit(url, host, verdict?.blocked == true, verdict?.source.orEmpty(), verdict?.rule.orEmpty()))
+            inspector.request(request, verdict?.blocked == true, verdict?.source.orEmpty(), verdict?.rule.orEmpty(), third)
             if (verdict?.blocked == true) {
                 blockedHere.incrementAndGet()
                 blockedUnsaved.incrementAndGet()
@@ -1508,6 +1514,7 @@ open class WebAppActivity : Activity() {
             pageColor = null
             blockedHere.set(0)
             fpCounts.clear()
+            inspector.newPage(url)
             Live.start(site.id, url)
             hideError()
             noted.clear()
@@ -1577,7 +1584,12 @@ open class WebAppActivity : Activity() {
             updateChrome()
         }
 
+        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+            inspector.status(request.url.toString(), response.statusCode, response.reasonPhrase.orEmpty())
+        }
+
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            inspector.failed(request.url.toString(), error.description?.toString().orEmpty())
             if (!request.isForMainFrame) return
             refresher.isRefreshing = false
             pageShown()
@@ -1608,6 +1620,11 @@ open class WebAppActivity : Activity() {
     }
 
     inner class Chrome : WebChromeClient() {
+        override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
+            inspector.console(message.messageLevel().name.lowercase(), message.message(), message.sourceId().orEmpty(), message.lineNumber())
+            return false
+        }
+
         override fun onProgressChanged(view: WebView, newProgress: Int) {
             progress.animate().cancel()
             if (newProgress >= 100) {

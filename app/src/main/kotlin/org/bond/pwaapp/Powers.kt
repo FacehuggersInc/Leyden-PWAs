@@ -70,6 +70,13 @@ object Proxy {
             return
         }
     }
+
+    fun covers(context: Context, url: String): Boolean {
+        val defaults = Defaults.get(context)
+        if (defaults.proxy.isEmpty() || !supported() || !onlyListed()) return false
+        val host = hostOf(url)
+        return defaults.proxySites.any { rule -> Filters.within(host, rule.removePrefix("*.").removePrefix(".")) }
+    }
 }
 
 object Copies {

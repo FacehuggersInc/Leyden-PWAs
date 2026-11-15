@@ -41,6 +41,11 @@ I wanted to make PWAs with customization, privacy, clarity and usefulness built 
 
 **Everyday extras**
 - Quick settings has search, find on the page, and toggles.
+- **Inspect** in quick settings works like developer tools:
+  - **Network:** every request, with blocking, status, size and timing.
+  - **Page:** details, timing, content, what the site stored, and the certificate.
+  - **Browser:** what your phone's WebView is and what the page sees after protection.
+  - **Console:** messages from the page, and a box to run JavaScript.
 - Links can open in the right app, with rewrites like reddit.com → old.reddit.com.
 - You can share text, links and files into an app.
 - Addresses can change by network, like your home Wi-Fi or Tailscale.
